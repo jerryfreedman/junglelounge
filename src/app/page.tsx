@@ -17,7 +17,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen jungle-bg flex items-center justify-center">
-      <div className="text-[var(--color-flamingo-blush)] animate-pulse font-heading text-xl">
+      <div className="text-flamingo-blush animate-pulse font-heading text-xl">
         Loading the jungle...
       </div>
     </div>
