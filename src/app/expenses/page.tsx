@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Batch, Sale, ensureSettings } from '@/lib/supabase';
+import { supabase, Batch, Sale, ensureSettings, requireUserId } from '@/lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface ExtractedItem {
@@ -37,9 +37,10 @@ export default function ExpensesPage() {
     setLoading(true);
     setError(null);
     try {
+      const uid = await requireUserId();
       const [batchRes, salesRes] = await Promise.all([
-        supabase.from('batches').select('*').order('date', { ascending: false }),
-        supabase.from('sales').select('*'),
+        supabase.from('batches').select('*').eq('user_id', uid).order('date', { ascending: false }),
+        supabase.from('sales').select('*').eq('user_id', uid),
       ]);
       if (batchRes.error) throw new Error(`Failed to load expenses: ${batchRes.error.message}`);
       if (salesRes.error) throw new Error(`Failed to load sales: ${salesRes.error.message}`);
@@ -127,7 +128,9 @@ export default function ExpensesPage() {
           notes: notesParts.join(' | '),
         };
       });
-      const { error: insertErr } = await supabase.from('batches').insert(rows);
+      const batchUid = await requireUserId();
+      const rowsWithUid = rows.map(r => ({ ...r, user_id: batchUid }));
+      const { error: insertErr } = await supabase.from('batches').insert(rowsWithUid);
       if (insertErr) throw new Error(`Failed to save expenses: ${insertErr.message}`);
       setExtractedItems([]);
       setShowReview(false);
@@ -144,8 +147,9 @@ export default function ExpensesPage() {
     setError(null);
     try {
       const costPerPlant = manualForm.quantity > 0 ? manualForm.total_cost / manualForm.quantity : 0;
+      const manualUid = await requireUserId();
       const { error: insertErr } = await supabase.from('batches').insert({
-        ...manualForm, cost_per_plant: parseFloat(costPerPlant.toFixed(2)), reorder_threshold: 3,
+        ...manualForm, cost_per_plant: parseFloat(costPerPlant.toFixed(2)), reorder_threshold: 3, user_id: manualUid,
       });
       if (insertErr) throw new Error(`Failed to add expense: ${insertErr.message}`);
       setManualForm({ name: '', supplier: '', quantity: 0, total_cost: 0, date: new Date().toISOString().split('T')[0], notes: '' });
@@ -233,7 +237,7 @@ export default function ExpensesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-tropical-leaf/20">
-                    <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Plant</th>
+                    <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Item</th>
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Supplier</th>
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Qty</th>
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Unit Cost</th>
@@ -282,7 +286,7 @@ export default function ExpensesPage() {
             <h2 className="font-heading text-lg text-white mb-4">Add Expense Manually</h2>
             <form onSubmit={handleManualSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Plant Name *</label>
+                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Item Name *</label>
                 <input required value={manualForm.name} onChange={e => setManualForm(f => ({ ...f, name: e.target.value }))}
                   className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white focus:outline-none focus:border-hot-pink font-body text-sm" />
               </div>
@@ -373,7 +377,7 @@ export default function ExpensesPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-tropical-leaf/20">
-                        <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Plant</th>
+                        <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Item</th>
                         <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Supplier</th>
                         <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Qty</th>
                         <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Total Cost</th>

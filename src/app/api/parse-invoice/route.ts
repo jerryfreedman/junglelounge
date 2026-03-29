@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SYSTEM_PROMPT = `You are a data extraction assistant for Jungle Lounge, a rare exotic plant business. You receive PDF invoices from plant suppliers. Extract every individual plant/item from the invoice and return ONLY a valid JSON array. Each item must have these fields:
-- "name": the plant name (string)
+const SYSTEM_PROMPT = `You are a data extraction assistant for a reselling business. You receive PDF invoices from suppliers. Extract every individual item from the invoice and return ONLY a valid JSON array. Each item must have these fields:
+- "name": the item/product name (string)
 - "quantity": number of plants (number, default 1)
-- "unit_cost": cost per plant in USD (number)
+- "unit_cost": cost per unit in USD (number)
 - "total_cost": total cost for this line item in USD (number)
 - "supplier": the supplier/vendor name from the invoice (string)
 - "date": the invoice date in YYYY-MM-DD format (string). Look for any date on the invoice — order date, invoice date, ship date. If no date is found, use null.
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
             },
             {
               type: 'text',
-              text: 'Extract all plant items from this invoice. Return only a JSON array.',
+              text: 'Extract all items from this invoice. Return only a JSON array.',
             }
           ],
         }],

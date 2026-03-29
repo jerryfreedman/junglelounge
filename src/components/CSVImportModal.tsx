@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { supabase, Batch } from '@/lib/supabase';
+import { supabase, Batch, requireUserId } from '@/lib/supabase';
 
 interface CSVImportModalProps {
   isOpen: boolean;
@@ -228,12 +228,14 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
             true_margin_pct: parseFloat(trueMargin.toFixed(2)),
             refunded: false,
             refund_amount: 0,
-            notes: 'Imported from Palmstreet CSV',
+            notes: 'Imported from CSV',
             stream_id: null,
           };
         });
 
-        const { error: insertErr } = await supabase.from('sales').insert(insertRows);
+        const csvUid = await requireUserId();
+        const insertRowsWithUid = insertRows.map(r => ({ ...r, user_id: csvUid }));
+        const { error: insertErr } = await supabase.from('sales').insert(insertRowsWithUid);
         if (insertErr) throw new Error(`Import failed: ${insertErr.message}`);
       }
 
@@ -253,7 +255,7 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-tropical-leaf/20">
           <div>
-            <h2 className="font-heading text-2xl text-hot-pink">Import from Palmstreet</h2>
+            <h2 className="font-heading text-2xl text-hot-pink">Import Sales CSV</h2>
             <p className="text-flamingo-blush/60 text-sm font-body mt-1">
               Step {Math.min(step, 4)} of 4
             </p>
@@ -286,9 +288,9 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
           {step === 1 && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">🦩</div>
-              <h3 className="font-heading text-xl text-white mb-2">Upload Palmstreet CSV</h3>
+              <h3 className="font-heading text-xl text-white mb-2">Upload Sales CSV</h3>
               <p className="text-flamingo-blush/60 font-body text-sm mb-6">
-                Export your sales data from Palmstreet and upload the CSV file here.
+                Export your sales data from your platform and upload the CSV file here.
               </p>
               <input
                 ref={fileInputRef}
@@ -316,7 +318,7 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 {[
-                  { key: 'plant_name', label: 'Plant Name *' },
+                  { key: 'plant_name', label: 'Item Name *' },
                   { key: 'buyer_name', label: 'Buyer Name *' },
                   { key: 'sale_price', label: 'Sale Price *' },
                   { key: 'date', label: 'Date *' },
@@ -384,7 +386,7 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-tropical-leaf/20">
-                      <th className="px-3 py-2 text-left text-flamingo-blush font-body">Plant</th>
+                      <th className="px-3 py-2 text-left text-flamingo-blush font-body">Item</th>
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Buyer</th>
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Sale $</th>
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Link Batch</th>
@@ -446,14 +448,14 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
             <div>
               <h3 className="font-heading text-lg text-white mb-2">Review & Confirm</h3>
               <p className="text-flamingo-blush/60 font-body text-sm mb-4">
-                Verify the calculated profits below. Palmstreet fee: {feePct}%. Click confirm to import all rows.
+                Verify the calculated profits below. Platform fee: {feePct}%. Click confirm to import all rows.
               </p>
 
               <div className="overflow-x-auto bg-dark-bg/50 rounded-lg mb-4">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-tropical-leaf/20">
-                      <th className="px-3 py-2 text-left text-flamingo-blush font-body">Plant</th>
+                      <th className="px-3 py-2 text-left text-flamingo-blush font-body">Item</th>
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Buyer</th>
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Sale $</th>
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Cost</th>

@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const navItems = [
-  { name: 'Main', href: '/main', icon: '🏠' },
+  { name: 'Dashboard', href: '/main', icon: '🏠' },
   { name: 'Sales', href: '/sales', icon: '💰' },
   { name: 'Expenses', href: '/expenses', icon: '📦' },
   { name: 'Buyers', href: '/buyers', icon: '👥' },
   { name: 'Pricing', href: '/pricing', icon: '🏷️' },
+  { name: 'My Business', href: '/settings', icon: '⚙️' },
 ];
 
 interface SidebarProps {
@@ -53,7 +54,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         <div className="absolute bottom-4 left-4 right-4 text-center">
           <p className="text-xs text-tropical-leaf/50 font-body">
-            Jungle Lounge Intel v2.0
+            Flippi v3.0
           </p>
         </div>
       </aside>

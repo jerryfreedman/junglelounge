@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Customer, Sale, Stream, EmailDraft, ensureSettings } from '@/lib/supabase';
+import { supabase, Customer, Sale, Stream, EmailDraft, ensureSettings, requireUserId } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const INACTIVE_BUCKETS = [7, 14, 30, 60, 90];
@@ -11,6 +12,7 @@ const PIE_COLORS = ['#F4607A', '#4A8C3F', '#F4849A', '#8B5E3C', '#1A3D1F', '#FFD
 const EMAIL_TYPES = ['Stream Announcement', 'Follow-Up', 'Win-Back', 'New Arrival', 'Thank You'];
 
 export default function BuyersPage() {
+  const { profile } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [streams, setStreams] = useState<Stream[]>([]);
@@ -32,9 +34,10 @@ export default function BuyersPage() {
     setLoading(true);
     setError(null);
     try {
+      const uid = await requireUserId();
       const [salesRes, streamRes] = await Promise.all([
-        supabase.from('sales').select('*').order('date', { ascending: false }),
-        supabase.from('streams').select('*').order('date', { ascending: false }),
+        supabase.from('sales').select('*').eq('user_id', uid).order('date', { ascending: false }),
+        supabase.from('streams').select('*').eq('user_id', uid).order('date', { ascending: false }),
       ]);
       if (salesRes.error) throw new Error(`Sales load failed: ${salesRes.error.message}`);
       if (streamRes.error) throw new Error(`Streams load failed: ${streamRes.error.message}`);
@@ -62,6 +65,7 @@ export default function BuyersPage() {
           last_purchase_date: dates[dates.length - 1],
           average_order_value: parseFloat((totalSpent / totalOrders).toFixed(2)),
           notes: '',
+          user_id: uid,
         };
       });
 
@@ -72,7 +76,7 @@ export default function BuyersPage() {
         if (upsertErr) throw new Error(`Customer sync failed: ${upsertErr.message}`);
       }
 
-      const { data: allCusts, error: custErr } = await supabase.from('customers').select('*').order('total_spent', { ascending: false });
+      const { data: allCusts, error: custErr } = await supabase.from('customers').select('*').eq('user_id', uid).order('total_spent', { ascending: false });
       if (custErr) throw new Error(`Customer load failed: ${custErr.message}`);
       setCustomers(allCusts || []);
     } catch (err) {
@@ -171,7 +175,7 @@ export default function BuyersPage() {
         const res = await fetch('/api/generate-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ customerName: c.name, emailType: bulkEmailType, plantName: bulkPlant, customNote: bulkNote }),
+          body: JSON.stringify({ customerName: c.name, emailType: bulkEmailType, plantName: bulkPlant, customNote: bulkNote, businessName: profile?.business_name, businessType: profile?.business_type, platformName: profile?.platform_name }),
         });
         const data = await res.json();
         if (data.error) {
@@ -179,8 +183,9 @@ export default function BuyersPage() {
         } else {
           results.push({ name: c.name, content: data.content || '' });
           // Save draft
+          const bulkUid = await requireUserId();
           await supabase.from('email_drafts').insert({
-            customer_name: c.name, email_type: bulkEmailType, custom_note: bulkNote, content: data.content || '',
+            customer_name: c.name, email_type: bulkEmailType, custom_note: bulkNote, content: data.content || '', user_id: bulkUid,
           });
         }
       } catch (err) {
@@ -201,14 +206,15 @@ export default function BuyersPage() {
       const res = await fetch('/api/generate-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerName: emailModal.name, emailType, plantName: emailPlant, customNote: emailNote }),
+        body: JSON.stringify({ customerName: emailModal.name, emailType, plantName: emailPlant, customNote: emailNote, businessName: profile?.business_name, businessType: profile?.business_type, platformName: profile?.platform_name }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setEmailResult(data.content || 'Error generating email');
       // Save draft
+      const draftUid = await requireUserId();
       const { error: draftErr } = await supabase.from('email_drafts').insert({
-        customer_name: emailModal.name, email_type: emailType, custom_note: emailNote, content: data.content || '',
+        customer_name: emailModal.name, email_type: emailType, custom_note: emailNote, content: data.content || '', user_id: draftUid,
       });
       if (draftErr) console.error('Failed to save email draft:', draftErr.message);
     } catch (err) {
@@ -419,7 +425,7 @@ export default function BuyersPage() {
               </div>
 
               <div className="mb-3">
-                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Plant Name (optional)</label>
+                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Item Name (optional)</label>
                 <input value={emailPlant} onChange={e => setEmailPlant(e.target.value)}
                   placeholder="e.g. Monstera Albo"
                   className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body text-sm" />
@@ -489,7 +495,7 @@ export default function BuyersPage() {
                   </div>
 
                   <div className="mb-3">
-                    <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Plant Name (optional)</label>
+                    <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Item Name (optional)</label>
                     <input value={bulkPlant} onChange={e => setBulkPlant(e.target.value)}
                       placeholder="e.g. Monstera Albo"
                       className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body text-sm" />

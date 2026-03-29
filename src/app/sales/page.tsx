@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Batch, Sale, Stream, ensureSettings } from '@/lib/supabase';
+import { supabase, Batch, Sale, Stream, ensureSettings, requireUserId } from '@/lib/supabase';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 type ChartType = 'line' | 'bar';
@@ -44,10 +44,11 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
+      const uid = await requireUserId();
       const [salesRes, batchRes, streamRes, settings] = await Promise.all([
-        supabase.from('sales').select('*').order('date', { ascending: false }),
-        supabase.from('batches').select('*').order('name'),
-        supabase.from('streams').select('*').order('date', { ascending: false }),
+        supabase.from('sales').select('*').eq('user_id', uid).order('date', { ascending: false }),
+        supabase.from('batches').select('*').eq('user_id', uid).order('name'),
+        supabase.from('streams').select('*').eq('user_id', uid).order('date', { ascending: false }),
         ensureSettings(),
       ]);
       if (salesRes.error) throw new Error(`Sales load failed: ${salesRes.error.message}`);
@@ -79,10 +80,11 @@ export default function SalesPage() {
     setError(null);
     try {
       const liveMargin = form.sale_price > 0 ? (liveProfit / form.sale_price) * 100 : 0;
+      const uid = await requireUserId();
       const { error: insertErr } = await supabase.from('sales').insert({
         ...form, palmstreet_fee_amount: parseFloat(liveFee.toFixed(2)),
         true_profit: parseFloat(liveProfit.toFixed(2)), true_margin_pct: parseFloat(liveMargin.toFixed(2)),
-        refunded: false, refund_amount: 0,
+        refunded: false, refund_amount: 0, user_id: uid,
       });
       if (insertErr) throw new Error(`Failed to save sale: ${insertErr.message}`);
       setForm({ batch_id: null, plant_name: '', buyer_name: '', sale_price: 0, cost_per_plant: 0, shipping_cost: 0, shipping_covered_by_us: false, date: new Date().toISOString().split('T')[0], notes: '', stream_id: null });
@@ -147,6 +149,7 @@ export default function SalesPage() {
       const trueMargin = totalRevenue > 0 ? (trueProfit / totalRevenue) * 100 : 0;
       const avgSalePrice = dateSales.length > 0 ? totalRevenue / dateSales.length : 0;
 
+      const streamUid = await requireUserId();
       const { data: newStream, error: insertErr } = await supabase.from('streams').insert({
         name: streamForm.name,
         date: streamForm.date,
@@ -160,6 +163,7 @@ export default function SalesPage() {
         total_plants_sold: dateSales.length,
         sell_through_rate: 100,
         average_sale_price: parseFloat(avgSalePrice.toFixed(2)),
+        user_id: streamUid,
       }).select().single();
 
       if (insertErr) throw new Error(`Failed to create stream: ${insertErr.message}`);
@@ -246,7 +250,7 @@ export default function SalesPage() {
 
   // Export CSV
   async function handleExportCSV() {
-    let csv = 'Plant Name,Buyer Name,Sale Price,Cost,Shipping,True Profit,Margin %,Date,Refunded\n';
+    let csv = 'Item Name,Buyer Name,Sale Price,Cost,Shipping,True Profit,Margin %,Date,Refunded\n';
     sales.forEach(s => {
       csv += `"${s.plant_name}","${s.buyer_name}",${s.sale_price},${s.cost_per_plant},${s.shipping_cost},${s.true_profit},${s.true_margin_pct},"${s.date}",${s.refunded}\n`;
     });
@@ -337,7 +341,7 @@ export default function SalesPage() {
             <h2 className="font-heading text-lg text-white mb-4">Log a Sale</h2>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Plant Name *</label>
+                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Item Name *</label>
                 <input required value={form.plant_name} onChange={e => setForm(f => ({ ...f, plant_name: e.target.value }))}
                   className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white focus:outline-none focus:border-hot-pink font-body text-sm" />
               </div>
@@ -568,7 +572,7 @@ export default function SalesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-tropical-leaf/20">
-                    <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase tracking-wide">Plant</th>
+                    <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase tracking-wide">Item</th>
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase tracking-wide"># Sold</th>
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase tracking-wide">Gross</th>
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase tracking-wide">Net Profit</th>

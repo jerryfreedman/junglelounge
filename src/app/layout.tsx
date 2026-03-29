@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Jungle Lounge Intel",
-  description: "Business Intelligence for Jungle Lounge - Rare Exotic Plants",
+  title: "Flippi — Reseller Intelligence",
+  description: "Track sales, expenses, and profits for your reselling business",
   manifest: "/manifest.json",
   icons: {
     icon: "/favicon.svg",
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "JL Intel",
+    title: "Flippi",
   },
 };
 
@@ -25,7 +26,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

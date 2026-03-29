@@ -1,25 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isLoading } = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    const auth = localStorage.getItem('authenticated');
-    if (auth !== 'true') {
-      router.replace('/login');
-    } else {
-      setIsAuthenticated(true);
-    }
-    setIsLoading(false);
-  }, [router]);
 
   if (isLoading) {
     return (
@@ -31,7 +21,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated) return null;
+  if (!user) {
+    router.replace('/login');
+    return null;
+  }
 
   return (
     <div className="min-h-screen jungle-bg leaf-pattern">

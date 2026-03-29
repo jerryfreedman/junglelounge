@@ -1,7 +1,7 @@
 {
-  "name": "Jungle Lounge Intel",
-  "short_name": "JL Intel",
-  "description": "Business Intelligence for Jungle Lounge - Rare Exotic Plants",
+  "name": "Flippi — Reseller Intelligence",
+  "short_name": "Flippi",
+  "description": "Track sales, expenses, and profits for your reselling business",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0F2410",

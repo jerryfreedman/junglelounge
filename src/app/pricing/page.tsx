@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Sale, ensureSettings } from '@/lib/supabase';
+import { supabase, Sale, ensureSettings, requireUserId } from '@/lib/supabase';
 
 interface PlantPerformance {
   name: string;
@@ -30,7 +30,8 @@ export default function PricingPage() {
     setError(null);
     try {
       await ensureSettings();
-      const { data, error: fetchErr } = await supabase.from('sales').select('*').order('date', { ascending: false });
+      const uid = await requireUserId();
+      const { data, error: fetchErr } = await supabase.from('sales').select('*').eq('user_id', uid).order('date', { ascending: false });
       if (fetchErr) throw new Error(`Failed to load sales: ${fetchErr.message}`);
       setSales(data || []);
     } catch (err) {
@@ -113,7 +114,7 @@ export default function PricingPage() {
               <h2 className="font-heading text-lg text-white mb-4">Suggested Starting Bid</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                 <div>
-                  <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Plant Name</label>
+                  <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Item Name</label>
                   <input
                     value={bidPlant}
                     onChange={e => setBidPlant(e.target.value)}

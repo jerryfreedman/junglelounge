@@ -5,9 +5,60 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Types
+// ── Auth helpers ──
+
+/** Get the current logged-in user's ID, or null if not logged in */
+export async function getUserId(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
+/** Get the current user's ID or throw if not logged in */
+export async function requireUserId(): Promise<string> {
+  const uid = await getUserId();
+  if (!uid) throw new Error('Not authenticated');
+  return uid;
+}
+
+/** Get the current user's profile */
+export interface Profile {
+  id: string;
+  business_name: string;
+  business_type: string;
+  platform_name: string;
+  email: string;
+  created_at?: string;
+}
+
+export async function getProfile(): Promise<Profile | null> {
+  const uid = await getUserId();
+  if (!uid) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', uid)
+    .single();
+  if (error) return null;
+  return data as Profile;
+}
+
+export async function updateProfile(updates: Partial<Profile>): Promise<Profile> {
+  const uid = await requireUserId();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', uid)
+    .select()
+    .single();
+  if (error) throw new Error(`Failed to update profile: ${error.message}`);
+  return data as Profile;
+}
+
+// ── Types ──
+
 export interface Batch {
   id?: string;
+  user_id?: string;
   name: string;
   supplier: string;
   quantity: number;
@@ -21,6 +72,7 @@ export interface Batch {
 
 export interface Sale {
   id?: string;
+  user_id?: string;
   batch_id: string | null;
   plant_name: string;
   buyer_name: string;
@@ -41,12 +93,14 @@ export interface Sale {
 
 export interface Settings {
   id?: string;
+  user_id?: string;
   palmstreet_fee_pct: number;
   created_at?: string;
 }
 
 export interface Customer {
   id?: string;
+  user_id?: string;
   name: string;
   total_spent: number;
   total_orders: number;
@@ -59,6 +113,7 @@ export interface Customer {
 
 export interface Wishlist {
   id?: string;
+  user_id?: string;
   customer_id: string;
   plant_name: string;
   date_added: string;
@@ -69,6 +124,7 @@ export interface Wishlist {
 
 export interface WishlistNotification {
   id?: string;
+  user_id?: string;
   batch_id: string;
   plant_name: string;
   matched_customers: number;
@@ -78,6 +134,7 @@ export interface WishlistNotification {
 
 export interface Stream {
   id?: string;
+  user_id?: string;
   name: string;
   date: string;
   notes: string;
@@ -95,6 +152,7 @@ export interface Stream {
 
 export interface EmailDraft {
   id?: string;
+  user_id?: string;
   customer_name: string;
   email_type: string;
   custom_note: string;
@@ -104,14 +162,21 @@ export interface EmailDraft {
 
 // ── Shared helpers ──
 
-/** Ensure a settings row exists and return it. Call this before any fee-dependent operation. */
+/** Ensure a settings row exists for the current user and return it */
 export async function ensureSettings(): Promise<Settings> {
-  const { data, error } = await supabase.from('settings').select('*').limit(1).single();
+  const uid = await requireUserId();
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('user_id', uid)
+    .limit(1)
+    .single();
+
   if (error && error.code === 'PGRST116') {
-    // No row yet — create the default
+    // No row yet — create the default for this user
     const { data: newRow, error: insertErr } = await supabase
       .from('settings')
-      .insert({ palmstreet_fee_pct: 0 })
+      .insert({ palmstreet_fee_pct: 0, user_id: uid })
       .select()
       .single();
     if (insertErr) throw new Error(`Failed to seed settings: ${insertErr.message}`);

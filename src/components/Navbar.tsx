@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Logo from './Logo';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
+import { supabase, requireUserId } from '@/lib/supabase';
 
 interface NavbarProps {
   onMenuToggle: () => void;
@@ -11,8 +12,10 @@ interface NavbarProps {
 
 export default function Navbar({ onMenuToggle }: NavbarProps) {
   const router = useRouter();
+  const { signOut, profile } = useAuth();
   const [showSettings, setShowSettings] = useState(false);
   const [feePct, setFeePct] = useState('');
+  const [feeLabel, setFeeLabel] = useState('Platform Fee');
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -21,6 +24,12 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (profile?.platform_name) {
+      setFeeLabel(`${profile.platform_name} Fee`);
+    }
+  }, [profile]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -33,13 +42,28 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
   }, [showSettings]);
 
   async function loadSettings() {
-    const { data, error } = await supabase.from('settings').select('*').limit(1).single();
-    if (error && error.code === 'PGRST116') {
-      const { data: newRow } = await supabase.from('settings').insert({ palmstreet_fee_pct: 0 }).select().single();
-      if (newRow) { setSettingsId(newRow.id); setFeePct('0'); }
-    } else if (data) {
-      setSettingsId(data.id);
-      setFeePct(String(data.palmstreet_fee_pct || 0));
+    try {
+      const uid = await requireUserId();
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('user_id', uid)
+        .limit(1)
+        .single();
+
+      if (error && error.code === 'PGRST116') {
+        const { data: newRow } = await supabase
+          .from('settings')
+          .insert({ palmstreet_fee_pct: 0, user_id: uid })
+          .select()
+          .single();
+        if (newRow) { setSettingsId(newRow.id); setFeePct('0'); }
+      } else if (data) {
+        setSettingsId(data.id);
+        setFeePct(String(data.palmstreet_fee_pct || 0));
+      }
+    } catch {
+      // Not authenticated yet, will load when ready
     }
   }
 
@@ -53,10 +77,12 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('authenticated');
+  const handleLogout = async () => {
+    await signOut();
     router.push('/login');
   };
+
+  const businessName = profile?.business_name || 'Flippi';
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-dark-bg/95 border-b border-deep-jungle z-50 flex items-center justify-between px-4 backdrop-blur-sm">
@@ -72,9 +98,14 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
         </button>
 
         <Logo size={40} />
-        <h1 className="font-heading text-xl text-hot-pink hidden sm:block">
-          Jungle Lounge Intel
-        </h1>
+        <div className="hidden sm:block">
+          <h1 className="font-heading text-lg text-hot-pink leading-tight">
+            Flippi
+          </h1>
+          <p className="text-flamingo-blush/40 text-xs font-body leading-tight -mt-0.5">
+            {businessName}
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -93,7 +124,7 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
 
           {showSettings && (
             <div className="absolute right-0 top-12 w-72 bg-deep-jungle border border-tropical-leaf/30 rounded-xl shadow-2xl p-4 z-50">
-              <h3 className="font-heading text-sm text-white mb-3">Palmstreet Fee</h3>
+              <h3 className="font-heading text-sm text-white mb-3">{feeLabel}</h3>
               <div className="flex items-center gap-2 mb-2">
                 <input
                   type="number"
