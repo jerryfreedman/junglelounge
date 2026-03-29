@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Batch, ensureSettings } from '@/lib/supabase';
+import { supabase, Batch, Sale, ensureSettings } from '@/lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface ExtractedItem {
@@ -17,6 +17,7 @@ interface ExtractedItem {
 
 export default function ExpensesPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([]);
@@ -36,9 +37,14 @@ export default function ExpensesPage() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fetchErr } = await supabase.from('batches').select('*').order('date', { ascending: false });
-      if (fetchErr) throw new Error(`Failed to load expenses: ${fetchErr.message}`);
-      setBatches(data || []);
+      const [batchRes, salesRes] = await Promise.all([
+        supabase.from('batches').select('*').order('date', { ascending: false }),
+        supabase.from('sales').select('*'),
+      ]);
+      if (batchRes.error) throw new Error(`Failed to load expenses: ${batchRes.error.message}`);
+      if (salesRes.error) throw new Error(`Failed to load sales: ${salesRes.error.message}`);
+      setBatches(batchRes.data || []);
+      setSales(salesRes.data || []);
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
     }
@@ -354,7 +360,7 @@ export default function ExpensesPage() {
             )}
 
             {/* Expenses Table (Breakdown by Cost) */}
-            <div className="bg-deep-jungle/40 border border-tropical-leaf/20 rounded-xl overflow-hidden">
+            <div className="bg-deep-jungle/40 border border-tropical-leaf/20 rounded-xl overflow-hidden mb-6">
               <div className="p-4 border-b border-tropical-leaf/20">
                 <h2 className="font-heading text-lg text-white">All Expenses</h2>
               </div>
@@ -396,6 +402,95 @@ export default function ExpensesPage() {
                 </div>
               )}
             </div>
+
+            {/* Supplier ROI Section */}
+            {batches.length > 0 && (() => {
+              // Group batches + linked sales by supplier
+              const supplierMap: Record<string, { invested: number; revenue: number; profit: number; plants: Record<string, number>; batchDates: string[] }> = {};
+              batches.forEach(b => {
+                if (!supplierMap[b.supplier]) supplierMap[b.supplier] = { invested: 0, revenue: 0, profit: 0, plants: {}, batchDates: [] };
+                supplierMap[b.supplier].invested += b.total_cost;
+                supplierMap[b.supplier].batchDates.push(b.date);
+                // Find sales linked to this batch
+                const linkedSales = sales.filter(s => s.batch_id === b.id);
+                linkedSales.forEach(s => {
+                  supplierMap[b.supplier].revenue += s.sale_price;
+                  supplierMap[b.supplier].profit += s.true_profit;
+                  if (!supplierMap[b.supplier].plants[s.plant_name]) supplierMap[b.supplier].plants[s.plant_name] = 0;
+                  supplierMap[b.supplier].plants[s.plant_name] += s.true_profit;
+                });
+              });
+
+              const supplierCards = Object.entries(supplierMap)
+                .map(([name, data]) => ({
+                  name,
+                  invested: data.invested,
+                  revenue: data.revenue,
+                  profit: data.profit,
+                  margin: data.revenue > 0 ? (data.profit / data.revenue) * 100 : 0,
+                  topPlants: Object.entries(data.plants).sort(([,a], [,b]) => b - a).slice(0, 3),
+                }))
+                .sort((a, b) => b.profit - a.profit);
+
+              const topSupplier = supplierCards.length > 0 ? supplierCards[0].name : null;
+              const worstSupplier = supplierCards.length > 1 ? supplierCards[supplierCards.length - 1].name : null;
+
+              return (
+                <div className="bg-deep-jungle/40 border border-tropical-leaf/20 rounded-xl p-6">
+                  <h2 className="font-heading text-lg text-white mb-4">Supplier ROI</h2>
+                  <p className="text-flamingo-blush/50 font-body text-xs mb-4">Ranked by total profit generated from linked sales</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {supplierCards.map(s => {
+                      const isTop = s.name === topSupplier;
+                      const isWorst = s.name === worstSupplier && supplierCards.length > 1 && s.margin < 20;
+                      return (
+                        <div key={s.name} className={`bg-dark-bg/40 rounded-lg p-4 border ${isTop ? 'border-yellow-500/40' : isWorst ? 'border-red-500/20' : 'border-tropical-leaf/10'}`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-heading text-sm text-white">{s.name}</h3>
+                            {isTop && <span className="text-sm" title="Top Supplier">🦩</span>}
+                            {isWorst && <span className="text-xs text-red-400/60 font-body">Review sourcing</span>}
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 mb-3 text-xs font-body">
+                            <div>
+                              <span className="text-flamingo-blush/50">Invested</span>
+                              <p className="text-hot-pink font-heading text-sm">${s.invested.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <span className="text-flamingo-blush/50">Revenue</span>
+                              <p className="text-white font-heading text-sm">${s.revenue.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <span className="text-flamingo-blush/50">Profit</span>
+                              <p className={`font-heading text-sm ${s.profit >= 0 ? 'text-tropical-leaf' : 'text-red-400'}`}>${s.profit.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <span className="text-flamingo-blush/50">Margin</span>
+                              <p className={`font-heading text-sm ${s.margin >= 50 ? 'text-tropical-leaf' : s.margin >= 20 ? 'text-yellow-400' : 'text-red-400'}`}>{s.margin.toFixed(1)}%</p>
+                            </div>
+                          </div>
+                          {s.topPlants.length > 0 && (
+                            <div className="border-t border-tropical-leaf/10 pt-2">
+                              <p className="text-flamingo-blush/40 font-body text-xs mb-1">Top plants:</p>
+                              {s.topPlants.map(([name, profit]) => (
+                                <p key={name} className="text-xs font-body text-flamingo-blush/60">
+                                  {name} — <span className={profit >= 0 ? 'text-tropical-leaf' : 'text-red-400'}>${profit.toFixed(2)}</span>
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                          {s.revenue === 0 && (
+                            <p className="text-flamingo-blush/30 font-body text-xs italic mt-2">No linked sales yet — link batches to sales to see ROI</p>
+                          )}
+                          {isTop && s.revenue > 0 && (
+                            <p className="text-yellow-500/60 font-body text-xs mt-2 italic">Invest more here</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </>
         )}
       </div>

@@ -460,6 +460,42 @@ export default function SalesPage() {
           </div>
         )}
 
+        {/* Stream Performance Trend */}
+        {!loading && streams.length > 1 && (() => {
+          const sortedStreams = [...streams].sort((a, b) => a.date.localeCompare(b.date));
+          const streamChartData = sortedStreams.map(s => ({
+            label: s.name.length > 12 ? s.name.slice(0, 12) + '...' : s.name,
+            revenue: s.total_revenue,
+            profit: s.true_profit,
+            date: s.date,
+          }));
+          const best = sortedStreams.reduce((a, b) => a.true_profit > b.true_profit ? a : b);
+          const worst = sortedStreams.reduce((a, b) => a.true_profit < b.true_profit ? a : b);
+
+          return (
+            <div className="bg-deep-jungle/40 border border-tropical-leaf/20 rounded-xl p-6 mb-6">
+              <h2 className="font-heading text-lg text-white mb-1">Stream Trends</h2>
+              <p className="text-flamingo-blush/50 font-body text-xs mb-4">Revenue & profit by stream over time</p>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={streamChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1A3D1F" />
+                    <XAxis dataKey="label" stroke="#F4849A" fontSize={10} />
+                    <YAxis stroke="#F4849A" fontSize={11} />
+                    <Tooltip contentStyle={{ backgroundColor: '#0F2410', border: '1px solid #4A8C3F', borderRadius: '8px', fontFamily: 'Inter' }} />
+                    <Line type="monotone" dataKey="revenue" stroke="#F4607A" strokeWidth={2} name="Revenue" dot={{ fill: '#F4607A', r: 4 }} />
+                    <Line type="monotone" dataKey="profit" stroke="#4A8C3F" strokeWidth={2} name="Profit" dot={{ fill: '#4A8C3F', r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex flex-wrap gap-4 mt-3 text-xs font-body">
+                <span className="text-flamingo-blush/50">Best: <span className="text-yellow-400">{best.name}</span> (${best.true_profit.toFixed(2)} profit)</span>
+                <span className="text-flamingo-blush/50">Worst: <span className="text-red-400/60">{worst.name}</span> (${worst.true_profit.toFixed(2)} profit)</span>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Sales Data Table */}
         <div className="mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">

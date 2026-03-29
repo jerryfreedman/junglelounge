@@ -124,6 +124,74 @@ export default function BuyersPage() {
   const pieData = getStreamPieData();
   const totalPieItems = pieData.reduce((sum, d) => sum + d.value, 0);
 
+  // Bulk email
+  const [bulkModal, setBulkModal] = useState(false);
+  const [bulkList, setBulkList] = useState<'all' | 'vip' | 'active' | 'cold'>('all');
+  const [bulkEmailType, setBulkEmailType] = useState('Follow-Up');
+  const [bulkPlant, setBulkPlant] = useState('');
+  const [bulkNote, setBulkNote] = useState('');
+  const [bulkResults, setBulkResults] = useState<{ name: string; content: string; error?: boolean }[]>([]);
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(0);
+
+  function getBulkCustomers() {
+    const today = new Date();
+    switch (bulkList) {
+      case 'vip': {
+        const sorted = [...customers].sort((a, b) => b.total_spent - a.total_spent);
+        return sorted.slice(0, Math.max(1, Math.ceil(sorted.length * 0.2)));
+      }
+      case 'active':
+        return customers.filter(c => {
+          const days = Math.floor((today.getTime() - new Date(c.last_purchase_date).getTime()) / (1000 * 60 * 60 * 24));
+          return days <= 60;
+        });
+      case 'cold':
+        return customers.filter(c => {
+          const days = Math.floor((today.getTime() - new Date(c.last_purchase_date).getTime()) / (1000 * 60 * 60 * 24));
+          return days > 60;
+        });
+      default:
+        return customers;
+    }
+  }
+
+  const bulkCustomers = getBulkCustomers();
+
+  async function handleBulkGenerate() {
+    setBulkGenerating(true);
+    setBulkResults([]);
+    setBulkProgress(0);
+    const targets = bulkCustomers;
+    const results: { name: string; content: string; error?: boolean }[] = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      const c = targets[i];
+      try {
+        const res = await fetch('/api/generate-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customerName: c.name, emailType: bulkEmailType, plantName: bulkPlant, customNote: bulkNote }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          results.push({ name: c.name, content: data.error, error: true });
+        } else {
+          results.push({ name: c.name, content: data.content || '' });
+          // Save draft
+          await supabase.from('email_drafts').insert({
+            customer_name: c.name, email_type: bulkEmailType, custom_note: bulkNote, content: data.content || '',
+          });
+        }
+      } catch (err) {
+        results.push({ name: c.name, content: String(err), error: true });
+      }
+      setBulkProgress(i + 1);
+      setBulkResults([...results]);
+    }
+    setBulkGenerating(false);
+  }
+
   // Email generation
   async function handleGenerateEmail() {
     if (!emailModal) return;
@@ -158,7 +226,13 @@ export default function BuyersPage() {
   return (
     <AppShell>
       <div className="max-w-7xl mx-auto">
-        <h1 className="font-heading text-3xl text-hot-pink mb-6">Buyers</h1>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <h1 className="font-heading text-3xl text-hot-pink">Buyers</h1>
+          <button onClick={() => { setBulkModal(true); setBulkResults([]); setBulkProgress(0); }}
+            className="px-4 py-2 bg-hot-pink hover:bg-flamingo-blush text-white font-heading text-sm rounded-lg transition-colors cursor-pointer">
+            Bulk Email
+          </button>
+        </div>
 
         {/* Error Banner */}
         {error && (
@@ -378,6 +452,102 @@ export default function BuyersPage() {
                     className="px-4 py-1.5 bg-hot-pink/20 hover:bg-hot-pink/30 text-hot-pink text-xs font-heading rounded cursor-pointer">
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {/* Bulk Email Modal */}
+        {bulkModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="bg-deep-jungle border border-tropical-leaf/30 rounded-xl p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-heading text-lg text-hot-pink">Bulk Email Generator</h3>
+                <button onClick={() => setBulkModal(false)} className="text-flamingo-blush/50 hover:text-white text-xl cursor-pointer">&times;</button>
+              </div>
+
+              {!bulkGenerating && bulkResults.length === 0 && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Customer List</label>
+                      <select value={bulkList} onChange={e => setBulkList(e.target.value as typeof bulkList)}
+                        className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white focus:outline-none focus:border-hot-pink font-body text-sm">
+                        <option value="all">All Buyers ({customers.length})</option>
+                        <option value="vip">VIPs — Top 20% ({Math.max(1, Math.ceil(customers.length * 0.2))})</option>
+                        <option value="active">Active — Last 60 days ({customers.filter(c => daysSince(c.last_purchase_date) <= 60).length})</option>
+                        <option value="cold">Cold — 60+ days ({customers.filter(c => daysSince(c.last_purchase_date) > 60).length})</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Email Type</label>
+                      <select value={bulkEmailType} onChange={e => setBulkEmailType(e.target.value)}
+                        className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white focus:outline-none focus:border-hot-pink font-body text-sm">
+                        {EMAIL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Plant Name (optional)</label>
+                    <input value={bulkPlant} onChange={e => setBulkPlant(e.target.value)}
+                      placeholder="e.g. Monstera Albo"
+                      className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body text-sm" />
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Custom Note (optional)</label>
+                    <textarea value={bulkNote} onChange={e => setBulkNote(e.target.value)}
+                      placeholder="Extra context applied to all emails..."
+                      rows={2}
+                      className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body text-sm resize-none" />
+                  </div>
+
+                  <button onClick={handleBulkGenerate} disabled={bulkCustomers.length === 0}
+                    className="w-full py-2 bg-hot-pink hover:bg-flamingo-blush text-white font-heading text-sm rounded-lg cursor-pointer disabled:opacity-50">
+                    Generate {bulkCustomers.length} Email{bulkCustomers.length !== 1 ? 's' : ''}
+                  </button>
+                </>
+              )}
+
+              {/* Progress */}
+              {bulkGenerating && (
+                <div className="text-center py-4">
+                  <div className="text-3xl animate-bounce inline-block mb-2">🦩</div>
+                  <p className="text-flamingo-blush/60 font-body text-sm animate-pulse mb-2">Generating emails...</p>
+                  <div className="w-full bg-dark-bg rounded-full h-2 mb-1">
+                    <div className="bg-hot-pink h-2 rounded-full transition-all" style={{ width: `${(bulkProgress / bulkCustomers.length) * 100}%` }} />
+                  </div>
+                  <p className="text-flamingo-blush/40 font-body text-xs">{bulkProgress} / {bulkCustomers.length}</p>
+                </div>
+              )}
+
+              {/* Results */}
+              {bulkResults.length > 0 && (
+                <div className="space-y-3 mt-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-flamingo-blush/60 font-body text-sm">{bulkResults.filter(r => !r.error).length} emails generated</p>
+                    {!bulkGenerating && (
+                      <button onClick={() => { setBulkResults([]); setBulkProgress(0); }}
+                        className="text-hot-pink/60 hover:text-hot-pink text-xs font-body cursor-pointer">Generate more</button>
+                    )}
+                  </div>
+                  {bulkResults.map((r, i) => (
+                    <div key={i} className={`bg-dark-bg/60 rounded-lg p-4 border ${r.error ? 'border-red-500/20' : 'border-tropical-leaf/20'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-white font-heading text-sm">{r.name}</span>
+                        {!r.error && (
+                          <button onClick={() => handleCopy(r.content)}
+                            className="px-3 py-1 bg-hot-pink/20 hover:bg-hot-pink/30 text-hot-pink text-xs font-heading rounded cursor-pointer">
+                            {copied ? 'Copied!' : 'Copy'}
+                          </button>
+                        )}
+                      </div>
+                      <pre className={`font-body text-xs whitespace-pre-wrap ${r.error ? 'text-red-400' : 'text-flamingo-blush/70'}`}>
+                        {r.content}
+                      </pre>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

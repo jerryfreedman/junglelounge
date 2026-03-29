@@ -16,6 +16,8 @@ export default function MainPage() {
 
   const [error, setError] = useState<string | null>(null);
 
+  const [exporting, setExporting] = useState(false);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -35,6 +37,60 @@ export default function MainPage() {
     }
     setLoading(false);
   }, []);
+
+  async function handleExportAll() {
+    setExporting(true);
+    try {
+      const [salesRes, batchRes, custRes] = await Promise.all([
+        supabase.from('sales').select('*').order('date', { ascending: false }),
+        supabase.from('batches').select('*').order('date', { ascending: false }),
+        supabase.from('customers').select('*').order('total_spent', { ascending: false }),
+      ]);
+
+      let csv = '=== JUNGLE LOUNGE INTEL — FULL BACKUP ===\n';
+      csv += `Export Date: ${new Date().toISOString().split('T')[0]}\n\n`;
+
+      csv += '--- SALES ---\n';
+      csv += 'Plant,Buyer,Sale Price,Cost,Shipping,Fee,True Profit,Margin %,Date,Refunded,Refund Amount\n';
+      (salesRes.data || []).forEach((s: Sale) => {
+        csv += `"${s.plant_name}","${s.buyer_name}",${s.sale_price},${s.cost_per_plant},${s.shipping_cost},${s.palmstreet_fee_amount},${s.true_profit},${s.true_margin_pct},"${s.date}",${s.refunded},${s.refund_amount}\n`;
+      });
+
+      csv += '\n--- BATCHES ---\n';
+      csv += 'Plant,Supplier,Quantity,Total Cost,Cost Per Plant,Date\n';
+      (batchRes.data || []).forEach((b: Batch) => {
+        csv += `"${b.name}","${b.supplier}",${b.quantity},${b.total_cost},${b.cost_per_plant},"${b.date}"\n`;
+      });
+
+      csv += '\n--- CUSTOMERS ---\n';
+      csv += 'Name,Total Spent,Orders,Avg Order,First Purchase,Last Purchase\n';
+      interface CustomerRow { name: string; total_spent: number; total_orders: number; average_order_value: number; first_purchase_date: string; last_purchase_date: string }
+      (custRes.data || []).forEach((c: CustomerRow) => {
+        csv += `"${c.name}",${c.total_spent},${c.total_orders},${c.average_order_value},"${c.first_purchase_date}","${c.last_purchase_date}"\n`;
+      });
+
+      // P&L summary
+      const totalRevenue = (salesRes.data || []).reduce((sum: number, s: Sale) => sum + s.sale_price, 0);
+      const totalProfit = (salesRes.data || []).reduce((sum: number, s: Sale) => sum + s.true_profit, 0);
+      const totalCost = (batchRes.data || []).reduce((sum: number, b: Batch) => sum + b.total_cost, 0);
+      csv += '\n--- P&L SUMMARY ---\n';
+      csv += `Total Revenue,${totalRevenue.toFixed(2)}\n`;
+      csv += `Total Costs,${totalCost.toFixed(2)}\n`;
+      csv += `Total Profit,${totalProfit.toFixed(2)}\n`;
+      csv += `Margin %,${totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : '0'}\n`;
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `jungle-lounge-backup-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
+    setExporting(false);
+  }
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -65,13 +121,32 @@ export default function MainPage() {
     <AppShell>
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="font-heading text-3xl md:text-4xl text-hot-pink mb-1">
-            Welcome back to the Jungle
-          </h1>
-          <p className="text-flamingo-blush/60 font-body text-sm">
-            Week of {week.start} to {week.end}
-          </p>
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <h1 className="font-heading text-3xl md:text-4xl text-hot-pink mb-1">
+              Welcome back to the Jungle
+            </h1>
+            <p className="text-flamingo-blush/60 font-body text-sm">
+              Week of {week.start} to {week.end}
+            </p>
+          </div>
+          <button
+            onClick={handleExportAll}
+            disabled={exporting}
+            className="px-4 py-2 bg-tropical-leaf/20 border border-tropical-leaf/30 hover:bg-tropical-leaf/30 text-tropical-leaf font-body text-sm rounded-lg transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-2"
+          >
+            {exporting ? (
+              <>
+                <span className="animate-spin">⏳</span>
+                Exporting...
+              </>
+            ) : (
+              <>
+                <span>📥</span>
+                Download Backup
+              </>
+            )}
+          </button>
         </div>
 
         {/* Error Banner */}

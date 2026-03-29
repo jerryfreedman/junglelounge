@@ -8,6 +8,7 @@ const navItems = [
   { name: 'Sales', href: '/sales', icon: '💰' },
   { name: 'Expenses', href: '/expenses', icon: '📦' },
   { name: 'Buyers', href: '/buyers', icon: '👥' },
+  { name: 'Pricing', href: '/pricing', icon: '🏷️' },
 ];
 
 interface SidebarProps {
