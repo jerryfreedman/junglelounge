@@ -263,7 +263,7 @@ export default function BuyersPage() {
                       <tr className="border-b border-tropical-leaf/20">
                         <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">#</th>
                         <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Buyer</th>
-                        <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Plants Bought</th>
+                        <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Items Bought</th>
                         <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Total Spent</th>
                         <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Shipping Paid</th>
                         <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Last Purchase</th>

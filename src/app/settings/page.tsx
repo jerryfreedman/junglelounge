@@ -28,21 +28,22 @@ export default function SettingsPage() {
   async function loadFee() {
     try {
       const uid = await requireUserId();
-      const { data, error } = await supabase
+      const { data: rows } = await supabase
         .from('settings')
         .select('*')
         .eq('user_id', uid)
-        .limit(1)
-        .single();
+        .limit(1);
 
-      if (error && error.code === 'PGRST116') {
-        const { data: newRow } = await supabase
+      const data = rows && rows.length > 0 ? rows[0] : null;
+
+      if (!data) {
+        const { data: newRows } = await supabase
           .from('settings')
           .insert({ palmstreet_fee_pct: 0, user_id: uid })
-          .select()
-          .single();
+          .select();
+        const newRow = newRows && newRows.length > 0 ? newRows[0] : null;
         if (newRow) { setSettingsId(newRow.id); setFeePct('0'); }
-      } else if (data) {
+      } else {
         setSettingsId(data.id);
         setFeePct(String(data.palmstreet_fee_pct || 0));
       }
@@ -95,7 +96,7 @@ export default function SettingsPage() {
               type="text"
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
-              placeholder="e.g. RarePlant Co, Vintage Finds"
+              placeholder="e.g. My Shop, Vintage Finds"
               className="w-full px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body"
             />
           </div>
@@ -128,7 +129,7 @@ export default function SettingsPage() {
               type="text"
               value={platformName}
               onChange={(e) => setPlatformName(e.target.value)}
-              placeholder="e.g. Palmstreet, Whatnot, eBay, Mercari"
+              placeholder="e.g. Whatnot, eBay, Mercari, Poshmark"
               className="w-full px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body"
             />
           </div>

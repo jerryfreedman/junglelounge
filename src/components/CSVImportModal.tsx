@@ -390,7 +390,7 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Buyer</th>
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Sale $</th>
                       <th className="px-3 py-2 text-left text-flamingo-blush font-body">Link Batch</th>
-                      <th className="px-3 py-2 text-left text-flamingo-blush font-body">Cost/Plant</th>
+                      <th className="px-3 py-2 text-left text-flamingo-blush font-body">Cost/Unit</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -150,7 +150,7 @@ export default function SalesPage() {
       const avgSalePrice = dateSales.length > 0 ? totalRevenue / dateSales.length : 0;
 
       const streamUid = await requireUserId();
-      const { data: newStream, error: insertErr } = await supabase.from('streams').insert({
+      const { data: newStreamRows, error: insertErr } = await supabase.from('streams').insert({
         name: streamForm.name,
         date: streamForm.date,
         notes: streamForm.notes,
@@ -164,7 +164,8 @@ export default function SalesPage() {
         sell_through_rate: 100,
         average_sale_price: parseFloat(avgSalePrice.toFixed(2)),
         user_id: streamUid,
-      }).select().single();
+      }).select();
+      const newStream = newStreamRows && newStreamRows.length > 0 ? newStreamRows[0] : null;
 
       if (insertErr) throw new Error(`Failed to create stream: ${insertErr.message}`);
 
@@ -248,8 +249,7 @@ export default function SalesPage() {
   });
   const plantStats = Object.entries(plantMap).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.gross - a.gross);
 
-  // Export CSV
-  async function handleExportCSV() {
+  function handleExportCSV() {
     let csv = 'Item Name,Buyer Name,Sale Price,Cost,Shipping,True Profit,Margin %,Date,Refunded\n';
     sales.forEach(s => {
       csv += `"${s.plant_name}","${s.buyer_name}",${s.sale_price},${s.cost_per_plant},${s.shipping_cost},${s.true_profit},${s.true_margin_pct},"${s.date}",${s.refunded}\n`;
@@ -258,7 +258,7 @@ export default function SalesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `jungle-lounge-sales-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `flippi-sales-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -268,7 +268,7 @@ export default function SalesPage() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <h1 className="font-heading text-3xl text-hot-pink">Sales</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setShowForm(!showForm)}
               className="px-4 py-2 bg-hot-pink hover:bg-flamingo-blush text-white font-heading text-sm rounded-lg transition-colors cursor-pointer">
               {showForm ? 'Cancel' : '+ Log Sale'}
@@ -364,7 +364,7 @@ export default function SalesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Cost Per Plant ($)</label>
+                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Cost Per Unit ($)</label>
                 <input type="number" min="0" step="0.01" value={form.cost_per_plant || ''} onChange={e => setForm(f => ({ ...f, cost_per_plant: parseFloat(e.target.value) || 0 }))}
                   className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white focus:outline-none focus:border-hot-pink font-body text-sm" />
               </div>
@@ -521,7 +521,7 @@ export default function SalesPage() {
                   <thead>
                     <tr className="border-b border-tropical-leaf/20">
                       {[
-                        { key: 'plant_name', label: 'Plant' }, { key: 'buyer_name', label: 'Buyer' },
+                        { key: 'plant_name', label: 'Item' }, { key: 'buyer_name', label: 'Buyer' },
                         { key: 'sale_price', label: 'Price' }, { key: 'cost_per_plant', label: 'Cost' },
                         { key: 'true_profit', label: 'Profit' }, { key: 'date', label: 'Date' },
                       ].map(col => (
@@ -564,10 +564,10 @@ export default function SalesPage() {
           </div>
         </div>
 
-        {/* Sales by Plant Type */}
+        {/* Sales by Item Type */}
         {!loading && plantStats.length > 0 && (
           <div className="bg-deep-jungle/40 border border-tropical-leaf/20 rounded-xl p-6">
-            <h2 className="font-heading text-lg text-white mb-4">Sales by Plant Type</h2>
+            <h2 className="font-heading text-lg text-white mb-4">Sales by Item</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>

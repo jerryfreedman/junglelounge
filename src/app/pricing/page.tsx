@@ -163,14 +163,14 @@ export default function PricingPage() {
               </div>
             </div>
 
-            {/* Plant Performance Table */}
+            {/* Item Performance Table */}
             <div className="mb-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <h2 className="font-heading text-lg text-white">Plant Performance</h2>
+                <h2 className="font-heading text-lg text-white">Item Performance</h2>
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search plants..."
+                  placeholder="Search items..."
                   className="w-64 px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body text-sm"
                 />
               </div>
@@ -178,7 +178,7 @@ export default function PricingPage() {
               <div className="bg-deep-jungle/40 border border-tropical-leaf/20 rounded-xl overflow-hidden">
                 {filtered.length === 0 ? (
                   <div className="p-8 text-center text-flamingo-blush/50 font-body text-sm">
-                    {search ? 'No matching plants.' : 'No sales data yet.'}
+                    {search ? 'No matching items.' : 'No sales data yet.'}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -186,7 +186,7 @@ export default function PricingPage() {
                       <thead>
                         <tr className="border-b border-tropical-leaf/20">
                           {[
-                            { key: 'name', label: 'Plant' },
+                            { key: 'name', label: 'Item' },
                             { key: 'timesSold', label: '# Sold' },
                             { key: 'avgPrice', label: 'Avg Price' },
                             { key: 'highPrice', label: 'High' },
@@ -227,15 +227,15 @@ export default function PricingPage() {
               </div>
             </div>
 
-            {/* Plants to Watch */}
+            {/* Items to Watch */}
             <div className="bg-deep-jungle/40 border border-tropical-leaf/20 rounded-xl p-6">
-              <h2 className="font-heading text-lg text-white mb-4">Plants to Watch</h2>
-              <p className="text-flamingo-blush/50 font-body text-xs mb-4">High-value plants (avg &gt; $100) not sold in 60+ days — restocking targets</p>
+              <h2 className="font-heading text-lg text-white mb-4">Items to Watch</h2>
+              <p className="text-flamingo-blush/50 font-body text-xs mb-4">High-value items (avg &gt; $100) not sold in 60+ days — restocking targets</p>
               {plantsToWatch.length === 0 ? (
                 <div className="bg-dark-bg/40 rounded-lg p-6 text-center">
                   <div className="text-3xl mb-2">🌿</div>
                   <p className="text-flamingo-blush/50 font-body text-sm">
-                    No plants qualify right now. All high-value plants have been selling recently — nice work!
+                    No items qualify right now. All high-value items have been selling recently — nice work!
                   </p>
                 </div>
               ) : (

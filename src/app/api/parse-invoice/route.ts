@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const SYSTEM_PROMPT = `You are a data extraction assistant for a reselling business. You receive PDF invoices from suppliers. Extract every individual item from the invoice and return ONLY a valid JSON array. Each item must have these fields:
 - "name": the item/product name (string)
-- "quantity": number of plants (number, default 1)
+- "quantity": number of units (number, default 1)
 - "unit_cost": cost per unit in USD (number)
 - "total_cost": total cost for this line item in USD (number)
 - "supplier": the supplier/vendor name from the invoice (string)

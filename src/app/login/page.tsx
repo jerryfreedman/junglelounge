@@ -104,18 +104,20 @@ export default function LoginPage() {
             {mode === 'forgot' && 'Reset your password'}
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
             <div>
               <label htmlFor="email" className="block text-sm text-flamingo-blush/80 mb-1.5 font-body">
                 Email
               </label>
               <input
                 id="email"
+                name="flippi-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
+                autoComplete="new-password"
                 className="w-full px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink focus:ring-1 focus:ring-hot-pink transition-colors font-body"
                 autoFocus
               />
@@ -128,11 +130,13 @@ export default function LoginPage() {
                 </label>
                 <input
                   id="password"
+                  name="flippi-pass"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
+                  autoComplete="new-password"
                   className="w-full px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink focus:ring-1 focus:ring-hot-pink transition-colors font-body"
                 />
               </div>

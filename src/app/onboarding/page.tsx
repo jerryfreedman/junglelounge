@@ -69,12 +69,12 @@ export default function OnboardingPage() {
       // Create initial settings row with fee
       const uid = await requireUserId();
       const fee = parseFloat(feePct) || 0;
-      const { data: existing } = await supabase
+      const { data: existingRows } = await supabase
         .from('settings')
         .select('id')
         .eq('user_id', uid)
-        .limit(1)
-        .single();
+        .limit(1);
+      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
 
       if (existing) {
         await supabase.from('settings').update({ palmstreet_fee_pct: fee }).eq('id', existing.id);
@@ -158,7 +158,7 @@ export default function OnboardingPage() {
                   type="text"
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="e.g. RarePlant Co, Vintage Finds NYC"
+                  placeholder="e.g. My Shop, Vintage Finds NYC"
                   autoFocus
                   className="w-full px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body"
                 />

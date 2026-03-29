@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import Navbar from './Navbar';
@@ -10,6 +10,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, profile, isLoading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.replace('/login');
+    } else if (!isLoading && profile && !profile.onboarding_complete) {
+      router.replace('/onboarding');
+    }
+  }, [isLoading, user, profile, router]);
 
   if (isLoading) {
     return (
@@ -21,13 +29,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
-    router.replace('/login');
-    return null;
-  }
-
-  if (profile && !profile.onboarding_complete) {
-    router.replace('/onboarding');
+  if (!user || (profile && !profile.onboarding_complete)) {
     return null;
   }
 
