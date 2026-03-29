@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Sale, Batch } from '@/lib/supabase';
+import { supabase, Sale, Batch, ensureSettings } from '@/lib/supabase';
 import CSVImportModal from '@/components/CSVImportModal';
 
 export default function MainPage() {
@@ -12,16 +12,25 @@ export default function MainPage() {
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [salesRes, batchRes, settingsRes] = await Promise.all([
-      supabase.from('sales').select('*').order('date', { ascending: false }),
-      supabase.from('batches').select('*').order('name'),
-      supabase.from('settings').select('*').limit(1).single(),
-    ]);
-    if (salesRes.data) setSales(salesRes.data);
-    if (batchRes.data) setBatches(batchRes.data);
-    if (settingsRes.data) setFeePct(settingsRes.data.palmstreet_fee_pct || 0);
+    setError(null);
+    try {
+      const [salesRes, batchRes, settings] = await Promise.all([
+        supabase.from('sales').select('*').order('date', { ascending: false }),
+        supabase.from('batches').select('*').order('name'),
+        ensureSettings(),
+      ]);
+      if (salesRes.error) throw new Error(`Sales load failed: ${salesRes.error.message}`);
+      if (batchRes.error) throw new Error(`Batches load failed: ${batchRes.error.message}`);
+      setSales(salesRes.data || []);
+      setBatches(batchRes.data || []);
+      setFeePct(settings.palmstreet_fee_pct || 0);
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
     setLoading(false);
   }, []);
 
@@ -62,6 +71,13 @@ export default function MainPage() {
             Week of {week.start} to {week.end}
           </p>
         </div>
+
+        {/* Error Banner */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
+            <p className="text-red-400 font-body text-sm">⚠️ {error}</p>
+          </div>
+        )}
 
         {/* CSV Upload Area */}
         <div className="bg-deep-jungle/40 border-2 border-dashed border-tropical-leaf/30 rounded-xl p-8 mb-8 text-center hover:border-hot-pink/40 transition-colors">

@@ -101,3 +101,33 @@ export interface EmailDraft {
   content: string;
   created_at?: string;
 }
+
+// ── Shared helpers ──
+
+/** Ensure a settings row exists and return it. Call this before any fee-dependent operation. */
+export async function ensureSettings(): Promise<Settings> {
+  const { data, error } = await supabase.from('settings').select('*').limit(1).single();
+  if (error && error.code === 'PGRST116') {
+    // No row yet — create the default
+    const { data: newRow, error: insertErr } = await supabase
+      .from('settings')
+      .insert({ palmstreet_fee_pct: 0 })
+      .select()
+      .single();
+    if (insertErr) throw new Error(`Failed to seed settings: ${insertErr.message}`);
+    return newRow as Settings;
+  }
+  if (error) throw new Error(`Failed to load settings: ${error.message}`);
+  return data as Settings;
+}
+
+/** Wrapper that checks Supabase response and throws on error */
+export function checkSupabaseError<T>(
+  result: { data: T | null; error: { message: string; code?: string } | null },
+  context: string
+): T {
+  if (result.error) {
+    throw new Error(`${context}: ${result.error.message}`);
+  }
+  return result.data as T;
+}

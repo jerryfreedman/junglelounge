@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Customer, Sale, Stream, EmailDraft } from '@/lib/supabase';
+import { supabase, Customer, Sale, Stream, EmailDraft, ensureSettings } from '@/lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const INACTIVE_BUCKETS = [7, 14, 30, 60, 90];
@@ -17,6 +17,8 @@ export default function BuyersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedStream, setSelectedStream] = useState<string>('');
 
+  const [error, setError] = useState<string | null>(null);
+
   // Email modal
   const [emailModal, setEmailModal] = useState<{ name: string } | null>(null);
   const [emailType, setEmailType] = useState('Follow-Up');
@@ -26,47 +28,54 @@ export default function BuyersPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [salesRes, streamRes] = await Promise.all([
-      supabase.from('sales').select('*').order('date', { ascending: false }),
-      supabase.from('streams').select('*').order('date', { ascending: false }),
-    ]);
+    setError(null);
+    try {
+      const [salesRes, streamRes] = await Promise.all([
+        supabase.from('sales').select('*').order('date', { ascending: false }),
+        supabase.from('streams').select('*').order('date', { ascending: false }),
+      ]);
+      if (salesRes.error) throw new Error(`Sales load failed: ${salesRes.error.message}`);
+      if (streamRes.error) throw new Error(`Streams load failed: ${streamRes.error.message}`);
 
-    const allSales = salesRes.data || [];
-    setSales(allSales);
-    setStreams(streamRes.data || []);
+      const allSales = salesRes.data || [];
+      setSales(allSales);
+      setStreams(streamRes.data || []);
 
-    // Sync customers from sales
-    const grouped: Record<string, Sale[]> = {};
-    allSales.forEach(s => {
-      if (!grouped[s.buyer_name]) grouped[s.buyer_name] = [];
-      grouped[s.buyer_name].push(s);
-    });
+      // Sync customers from sales — batch upsert instead of N+1 queries
+      const grouped: Record<string, Sale[]> = {};
+      allSales.forEach(s => {
+        if (!grouped[s.buyer_name]) grouped[s.buyer_name] = [];
+        grouped[s.buyer_name].push(s);
+      });
 
-    for (const [name, customerSales] of Object.entries(grouped)) {
-      const totalSpent = customerSales.reduce((sum, s) => sum + s.sale_price, 0);
-      const totalOrders = customerSales.length;
-      const dates = customerSales.map(s => s.date).sort();
-
-      const { data: existing } = await supabase.from('customers').select('*').eq('name', name).limit(1).single();
-      if (existing) {
-        await supabase.from('customers').update({
+      const customerRows = Object.entries(grouped).map(([name, customerSales]) => {
+        const totalSpent = customerSales.reduce((sum, s) => sum + s.sale_price, 0);
+        const totalOrders = customerSales.length;
+        const dates = customerSales.map(s => s.date).sort();
+        return {
+          name,
           total_spent: parseFloat(totalSpent.toFixed(2)),
           total_orders: totalOrders,
           first_purchase_date: dates[0],
           last_purchase_date: dates[dates.length - 1],
           average_order_value: parseFloat((totalSpent / totalOrders).toFixed(2)),
-        }).eq('id', existing.id);
-      } else {
-        await supabase.from('customers').insert({
-          name, total_spent: parseFloat(totalSpent.toFixed(2)), total_orders: totalOrders,
-          first_purchase_date: dates[0], last_purchase_date: dates[dates.length - 1],
-          average_order_value: parseFloat((totalSpent / totalOrders).toFixed(2)), notes: '',
-        });
-      }
-    }
+          notes: '',
+        };
+      });
 
-    const { data: allCusts } = await supabase.from('customers').select('*').order('total_spent', { ascending: false });
-    setCustomers(allCusts || []);
+      if (customerRows.length > 0) {
+        const { error: upsertErr } = await supabase
+          .from('customers')
+          .upsert(customerRows, { onConflict: 'name', ignoreDuplicates: false });
+        if (upsertErr) throw new Error(`Customer sync failed: ${upsertErr.message}`);
+      }
+
+      const { data: allCusts, error: custErr } = await supabase.from('customers').select('*').order('total_spent', { ascending: false });
+      if (custErr) throw new Error(`Customer load failed: ${custErr.message}`);
+      setCustomers(allCusts || []);
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
     setLoading(false);
   }, []);
 
@@ -125,13 +134,15 @@ export default function BuyersPage() {
         body: JSON.stringify({ customerName: emailModal.name, emailType, plantName: '', customNote: '' }),
       });
       const data = await res.json();
-      setEmailResult(data.content || data.error || 'Error generating email');
+      if (data.error) throw new Error(data.error);
+      setEmailResult(data.content || 'Error generating email');
       // Save draft
-      await supabase.from('email_drafts').insert({
+      const { error: draftErr } = await supabase.from('email_drafts').insert({
         customer_name: emailModal.name, email_type: emailType, custom_note: '', content: data.content || '',
       });
+      if (draftErr) console.error('Failed to save email draft:', draftErr.message);
     } catch (err) {
-      setEmailResult('Error: ' + err);
+      setEmailResult('Error: ' + (err instanceof Error ? err.message : err));
     }
     setGenerating(false);
   }
@@ -146,6 +157,13 @@ export default function BuyersPage() {
     <AppShell>
       <div className="max-w-7xl mx-auto">
         <h1 className="font-heading text-3xl text-hot-pink mb-6">Buyers</h1>
+
+        {/* Error Banner */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
+            <p className="text-red-400 font-body text-sm">⚠️ {error}</p>
+          </div>
+        )}
 
         {loading ? (
           <div className="text-flamingo-blush animate-pulse font-body text-center py-8">Syncing buyer data...</div>

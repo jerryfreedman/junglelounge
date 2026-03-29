@@ -6,6 +6,7 @@ const SYSTEM_PROMPT = `You are a data extraction assistant for Jungle Lounge, a 
 - "unit_cost": cost per plant in USD (number)
 - "total_cost": total cost for this line item in USD (number)
 - "supplier": the supplier/vendor name from the invoice (string)
+- "date": the invoice date in YYYY-MM-DD format (string). Look for any date on the invoice — order date, invoice date, ship date. If no date is found, use null.
 
 If you cannot parse the invoice, return: [{"error": "Could not parse invoice"}]
 Return ONLY the JSON array, no other text.`;

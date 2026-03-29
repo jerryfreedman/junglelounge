@@ -175,53 +175,74 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
 
   const allCostsAssigned = mappedRows.every(r => r.hasCost);
 
+  const [importError, setImportError] = useState<string | null>(null);
+
   async function handleImport() {
     setImporting(true);
-    let imported = 0;
-    let skipped = 0;
+    setImportError(null);
 
-    for (const row of mappedRows) {
-      // Check for duplicate: same plant_name + buyer_name + date
-      const { data: existing } = await supabase
+    try {
+      // Batch duplicate check: fetch all existing sales for the relevant date range
+      const dates = [...new Set(mappedRows.map(r => r.date))];
+      const { data: existingSales, error: fetchErr } = await supabase
         .from('sales')
-        .select('id')
-        .eq('plant_name', row.plant_name)
-        .eq('buyer_name', row.buyer_name)
-        .eq('date', row.date)
-        .limit(1);
+        .select('plant_name, buyer_name, date')
+        .in('date', dates);
 
-      if (existing && existing.length > 0) {
-        skipped++;
-        continue;
+      if (fetchErr) throw new Error(`Failed to check duplicates: ${fetchErr.message}`);
+
+      // Build a set of existing keys for O(1) lookup
+      const existingKeys = new Set(
+        (existingSales || []).map(s => `${s.plant_name}|${s.buyer_name}|${s.date}`)
+      );
+
+      // Separate new rows from duplicates
+      const newRows: typeof mappedRows = [];
+      let skipped = 0;
+      for (const row of mappedRows) {
+        const key = `${row.plant_name}|${row.buyer_name}|${row.date}`;
+        if (existingKeys.has(key)) {
+          skipped++;
+        } else {
+          newRows.push(row);
+        }
       }
 
-      const feeAmount = row.sale_price * (feePct / 100);
-      const trueProfit = row.sale_price - row.cost_per_plant - feeAmount;
-      const trueMargin = row.sale_price > 0 ? (trueProfit / row.sale_price) * 100 : 0;
+      // Batch insert all new rows at once
+      if (newRows.length > 0) {
+        const insertRows = newRows.map(row => {
+          const feeAmount = row.sale_price * (feePct / 100);
+          const trueProfit = row.sale_price - row.cost_per_plant - feeAmount;
+          const trueMargin = row.sale_price > 0 ? (trueProfit / row.sale_price) * 100 : 0;
+          return {
+            plant_name: row.plant_name,
+            buyer_name: row.buyer_name,
+            sale_price: row.sale_price,
+            date: row.date,
+            cost_per_plant: row.cost_per_plant,
+            batch_id: row.batch_id,
+            shipping_cost: 0,
+            shipping_covered_by_us: false,
+            palmstreet_fee_amount: parseFloat(feeAmount.toFixed(2)),
+            true_profit: parseFloat(trueProfit.toFixed(2)),
+            true_margin_pct: parseFloat(trueMargin.toFixed(2)),
+            refunded: false,
+            refund_amount: 0,
+            notes: 'Imported from Palmstreet CSV',
+            stream_id: null,
+          };
+        });
 
-      await supabase.from('sales').insert({
-        plant_name: row.plant_name,
-        buyer_name: row.buyer_name,
-        sale_price: row.sale_price,
-        date: row.date,
-        cost_per_plant: row.cost_per_plant,
-        batch_id: row.batch_id,
-        shipping_cost: 0,
-        shipping_covered_by_us: false,
-        palmstreet_fee_amount: parseFloat(feeAmount.toFixed(2)),
-        true_profit: parseFloat(trueProfit.toFixed(2)),
-        true_margin_pct: parseFloat(trueMargin.toFixed(2)),
-        refunded: false,
-        refund_amount: 0,
-        notes: 'Imported from Palmstreet CSV',
-        stream_id: null,
-      });
-      imported++;
+        const { error: insertErr } = await supabase.from('sales').insert(insertRows);
+        if (insertErr) throw new Error(`Import failed: ${insertErr.message}`);
+      }
+
+      setResult({ imported: newRows.length, skipped });
+      setStep(5);
+    } catch (err) {
+      setImportError(String(err instanceof Error ? err.message : err));
     }
-
-    setResult({ imported, skipped });
     setImporting(false);
-    setStep(5); // success step
   }
 
   if (!isOpen) return null;
@@ -478,6 +499,13 @@ export default function CSVImportModal({ isOpen, onClose, onComplete, batches, f
                   Back
                 </button>
               </div>
+
+              {/* Import error */}
+              {importError && (
+                <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                  <p className="text-red-400 font-body text-sm">⚠️ {importError}</p>
+                </div>
+              )}
 
               {/* Flamingo loading animation */}
               {importing && (

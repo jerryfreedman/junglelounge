@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Batch, Sale } from '@/lib/supabase';
+import { supabase, Batch, Sale, ensureSettings } from '@/lib/supabase';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 type ChartType = 'line' | 'bar';
@@ -31,19 +31,27 @@ export default function SalesPage() {
 
   // Refund modal
   const [refundModal, setRefundModal] = useState<{ sale: Sale | null; amount: string }>({ sale: null, amount: '' });
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [salesRes, batchRes, settingsRes] = await Promise.all([
-      supabase.from('sales').select('*').order(sortField, { ascending: sortDir === 'asc' }),
-      supabase.from('batches').select('*').order('name'),
-      supabase.from('settings').select('*').limit(1).single()
-    ]);
-    if (salesRes.data) setSales(salesRes.data);
-    if (batchRes.data) setBatches(batchRes.data);
-    if (settingsRes.data) setFeePct(settingsRes.data.palmstreet_fee_pct || 0);
+    setError(null);
+    try {
+      const [salesRes, batchRes, settings] = await Promise.all([
+        supabase.from('sales').select('*').order('date', { ascending: false }),
+        supabase.from('batches').select('*').order('name'),
+        ensureSettings(),
+      ]);
+      if (salesRes.error) throw new Error(`Sales load failed: ${salesRes.error.message}`);
+      if (batchRes.error) throw new Error(`Batches load failed: ${batchRes.error.message}`);
+      setSales(salesRes.data || []);
+      setBatches(batchRes.data || []);
+      setFeePct(settings.palmstreet_fee_pct || 0);
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
     setLoading(false);
-  }, [sortField, sortDir]);
+  }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -59,25 +67,41 @@ export default function SalesPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const liveMargin = form.sale_price > 0 ? (liveProfit / form.sale_price) * 100 : 0;
-    await supabase.from('sales').insert({
-      ...form, palmstreet_fee_amount: parseFloat(liveFee.toFixed(2)),
-      true_profit: parseFloat(liveProfit.toFixed(2)), true_margin_pct: parseFloat(liveMargin.toFixed(2)),
-      refunded: false, refund_amount: 0,
-    });
-    setForm({ batch_id: null, plant_name: '', buyer_name: '', sale_price: 0, cost_per_plant: 0, shipping_cost: 0, shipping_covered_by_us: false, date: new Date().toISOString().split('T')[0], notes: '', stream_id: null });
-    setShowForm(false);
-    loadData();
+    setError(null);
+    try {
+      const liveMargin = form.sale_price > 0 ? (liveProfit / form.sale_price) * 100 : 0;
+      const { error: insertErr } = await supabase.from('sales').insert({
+        ...form, palmstreet_fee_amount: parseFloat(liveFee.toFixed(2)),
+        true_profit: parseFloat(liveProfit.toFixed(2)), true_margin_pct: parseFloat(liveMargin.toFixed(2)),
+        refunded: false, refund_amount: 0,
+      });
+      if (insertErr) throw new Error(`Failed to save sale: ${insertErr.message}`);
+      setForm({ batch_id: null, plant_name: '', buyer_name: '', sale_price: 0, cost_per_plant: 0, shipping_cost: 0, shipping_covered_by_us: false, date: new Date().toISOString().split('T')[0], notes: '', stream_id: null });
+      setShowForm(false);
+      loadData();
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
   }
 
   async function handleRefund() {
     if (!refundModal.sale) return;
-    const amount = parseFloat(refundModal.amount) || 0;
-    const updatedProfit = refundModal.sale.true_profit - amount;
-    const updatedMargin = refundModal.sale.sale_price > 0 ? (updatedProfit / refundModal.sale.sale_price) * 100 : 0;
-    await supabase.from('sales').update({ refunded: true, refund_amount: amount, true_profit: parseFloat(updatedProfit.toFixed(2)), true_margin_pct: parseFloat(updatedMargin.toFixed(2)) }).eq('id', refundModal.sale.id);
-    setRefundModal({ sale: null, amount: '' });
-    loadData();
+    setError(null);
+    try {
+      const amount = parseFloat(refundModal.amount) || 0;
+      const updatedProfit = refundModal.sale.true_profit - amount;
+      const updatedMargin = refundModal.sale.sale_price > 0 ? (updatedProfit / refundModal.sale.sale_price) * 100 : 0;
+      const { error: updateErr } = await supabase.from('sales').update({
+        refunded: true, refund_amount: amount,
+        true_profit: parseFloat(updatedProfit.toFixed(2)),
+        true_margin_pct: parseFloat(updatedMargin.toFixed(2))
+      }).eq('id', refundModal.sale.id);
+      if (updateErr) throw new Error(`Refund failed: ${updateErr.message}`);
+      setRefundModal({ sale: null, amount: '' });
+      loadData();
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
   }
 
   function handleSort(field: string) {
@@ -85,7 +109,19 @@ export default function SalesPage() {
     else { setSortField(field); setSortDir('desc'); }
   }
 
-  const filteredSales = sales.filter(s =>
+  // Client-side sort + filter (no re-query needed)
+  const sortedSales = [...sales].sort((a, b) => {
+    const aVal = (a as unknown as Record<string, unknown>)[sortField];
+    const bVal = (b as unknown as Record<string, unknown>)[sortField];
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+    }
+    const aStr = String(aVal || '');
+    const bStr = String(bVal || '');
+    return sortDir === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+  });
+
+  const filteredSales = sortedSales.filter(s =>
     s.plant_name.toLowerCase().includes(search.toLowerCase()) ||
     s.buyer_name.toLowerCase().includes(search.toLowerCase())
   );
@@ -163,6 +199,13 @@ export default function SalesPage() {
             </button>
           </div>
         </div>
+
+        {/* Error Banner */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
+            <p className="text-red-400 font-body text-sm">⚠️ {error}</p>
+          </div>
+        )}
 
         {/* Log Sale Form (collapsible) */}
         {showForm && (

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AppShell from '@/components/AppShell';
-import { supabase, Batch } from '@/lib/supabase';
+import { supabase, Batch, ensureSettings } from '@/lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface ExtractedItem {
@@ -11,6 +11,7 @@ interface ExtractedItem {
   unit_cost: number;
   total_cost: number;
   supplier: string;
+  date?: string;
   error?: string;
 }
 
@@ -23,6 +24,8 @@ export default function ExpensesPage() {
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   // Manual add form
   const [showManual, setShowManual] = useState(false);
   const [manualForm, setManualForm] = useState({
@@ -31,85 +34,132 @@ export default function ExpensesPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from('batches').select('*').order('date', { ascending: false });
-    if (data) setBatches(data);
+    setError(null);
+    try {
+      const { data, error: fetchErr } = await supabase.from('batches').select('*').order('date', { ascending: false });
+      if (fetchErr) throw new Error(`Failed to load expenses: ${fetchErr.message}`);
+      setBatches(data || []);
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
     setLoading(false);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Handle PDF upload
+  const [lastUploadedPath, setLastUploadedPath] = useState<string | null>(null);
+
+  // Handle PDF upload — save to Supabase Storage + extract with AI
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setUploading(true);
     setExtractedItems([]);
+    setError(null);
 
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const base64 = (ev.target?.result as string).split(',')[1];
       try {
+        // 1. Upload original file to Supabase Storage
+        const timestamp = Date.now();
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const storagePath = `${timestamp}_${safeName}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from('invoices')
+          .upload(storagePath, file, { contentType: file.type, upsert: false });
+
+        if (uploadErr) {
+          console.warn('Storage upload skipped (bucket may not exist):', uploadErr.message);
+          // Don't block — extraction still works without storage
+        } else {
+          setLastUploadedPath(storagePath);
+        }
+
+        // 2. Send to AI for extraction
         const res = await fetch('/api/parse-invoice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileBase64: base64, fileType: file.type }),
         });
         const data = await res.json();
+        if (data.error) throw new Error(data.error);
         if (data.items && data.items.length > 0 && !data.items[0].error) {
           setExtractedItems(data.items);
           setShowReview(true);
         } else {
-          alert('Could not extract data from this invoice. Try uploading a clearer PDF or image.');
+          setError('Could not extract data from this invoice. Try uploading a clearer PDF or image.');
         }
       } catch (err) {
-        alert('Error processing invoice: ' + err);
+        setError('Error processing invoice: ' + (err instanceof Error ? err.message : err));
       }
       setUploading(false);
     };
     reader.readAsDataURL(file);
-    // Reset input so same file can be re-uploaded
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
-  // Save extracted items as batches
+  // Save extracted items as batches (batch insert)
   async function handleSaveExtracted() {
     setSaving(true);
-    for (const item of extractedItems) {
-      const costPerPlant = item.quantity > 0 ? item.total_cost / item.quantity : item.unit_cost;
-      await supabase.from('batches').insert({
-        name: item.name,
-        supplier: item.supplier,
-        quantity: item.quantity,
-        total_cost: item.total_cost,
-        cost_per_plant: parseFloat(costPerPlant.toFixed(2)),
-        reorder_threshold: 3,
-        date: new Date().toISOString().split('T')[0],
-        notes: 'Imported from invoice',
+    setError(null);
+    try {
+      const rows = extractedItems.map(item => {
+        const costPerPlant = item.quantity > 0 ? item.total_cost / item.quantity : item.unit_cost;
+        const notesParts = ['Imported from invoice'];
+        if (lastUploadedPath) notesParts.push(`file: ${lastUploadedPath}`);
+        return {
+          name: item.name,
+          supplier: item.supplier,
+          quantity: item.quantity,
+          total_cost: item.total_cost,
+          cost_per_plant: parseFloat(costPerPlant.toFixed(2)),
+          reorder_threshold: 3,
+          date: item.date || new Date().toISOString().split('T')[0],
+          notes: notesParts.join(' | '),
+        };
       });
+      const { error: insertErr } = await supabase.from('batches').insert(rows);
+      if (insertErr) throw new Error(`Failed to save expenses: ${insertErr.message}`);
+      setExtractedItems([]);
+      setShowReview(false);
+      loadData();
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
     }
-    setExtractedItems([]);
-    setShowReview(false);
     setSaving(false);
-    loadData();
   }
 
   // Manual batch add
   async function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const costPerPlant = manualForm.quantity > 0 ? manualForm.total_cost / manualForm.quantity : 0;
-    await supabase.from('batches').insert({
-      ...manualForm, cost_per_plant: parseFloat(costPerPlant.toFixed(2)), reorder_threshold: 3,
-    });
-    setManualForm({ name: '', supplier: '', quantity: 0, total_cost: 0, date: new Date().toISOString().split('T')[0], notes: '' });
-    setShowManual(false);
-    loadData();
+    setError(null);
+    try {
+      const costPerPlant = manualForm.quantity > 0 ? manualForm.total_cost / manualForm.quantity : 0;
+      const { error: insertErr } = await supabase.from('batches').insert({
+        ...manualForm, cost_per_plant: parseFloat(costPerPlant.toFixed(2)), reorder_threshold: 3,
+      });
+      if (insertErr) throw new Error(`Failed to add expense: ${insertErr.message}`);
+      setManualForm({ name: '', supplier: '', quantity: 0, total_cost: 0, date: new Date().toISOString().split('T')[0], notes: '' });
+      setShowManual(false);
+      loadData();
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
   }
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this expense?')) return;
-    await supabase.from('batches').delete().eq('id', id);
-    loadData();
+    setError(null);
+    try {
+      const { error: delErr } = await supabase.from('batches').delete().eq('id', id);
+      if (delErr) throw new Error(`Failed to delete expense: ${delErr.message}`);
+      loadData();
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    }
   }
 
   // Chart data: expenses grouped by supplier
@@ -137,6 +187,13 @@ export default function ExpensesPage() {
             </button>
           </div>
         </div>
+
+        {/* Error Banner */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
+            <p className="text-red-400 font-body text-sm">⚠️ {error}</p>
+          </div>
+        )}
 
         {/* PDF Upload Area */}
         <div className="bg-deep-jungle/40 border-2 border-dashed border-tropical-leaf/30 rounded-xl p-8 mb-6 text-center hover:border-hot-pink/40 transition-colors">
@@ -175,6 +232,7 @@ export default function ExpensesPage() {
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Qty</th>
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Unit Cost</th>
                     <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Total</th>
+                    <th className="px-3 py-2 text-left text-flamingo-blush/70 font-body font-medium text-xs uppercase">Date</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -185,6 +243,17 @@ export default function ExpensesPage() {
                       <td className="px-3 py-2 text-white font-body">{item.quantity}</td>
                       <td className="px-3 py-2 text-white font-body">${item.unit_cost.toFixed(2)}</td>
                       <td className="px-3 py-2 text-hot-pink font-heading">${item.total_cost.toFixed(2)}</td>
+                      <td className="px-3 py-2">
+                        <input type="date"
+                          value={item.date || new Date().toISOString().split('T')[0]}
+                          onChange={e => {
+                            const updated = [...extractedItems];
+                            updated[i] = { ...updated[i], date: e.target.value };
+                            setExtractedItems(updated);
+                          }}
+                          className="px-2 py-1 bg-dark-bg border border-deep-jungle rounded text-white text-xs font-body focus:outline-none focus:border-hot-pink"
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
