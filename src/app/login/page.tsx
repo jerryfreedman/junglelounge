@@ -1,20 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/lib/auth';
 
 type Mode = 'login' | 'signup' | 'forgot';
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [mode, setMode] = useState<Mode>('login');
+  const [mode, setMode] = useState<Mode>(initialMode);
   const router = useRouter();
   const { user, profile, isLoading: authLoading, signIn, signUp } = useAuth();
 
@@ -62,7 +64,6 @@ export default function LoginPage() {
         router.push('/main');
       }
     } else if (mode === 'forgot') {
-      // Import supabase directly for password reset
       const { supabase } = await import('@/lib/supabase');
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/login`,
@@ -100,7 +101,7 @@ export default function LoginPage() {
           </h1>
           <p className="text-center text-flamingo-blush/70 text-sm mb-6 font-body">
             {mode === 'login' && 'Sign in to your reseller dashboard'}
-            {mode === 'signup' && 'Create your free account'}
+            {mode === 'signup' && 'Start your free 30-day trial'}
             {mode === 'forgot' && 'Reset your password'}
           </p>
 
@@ -149,11 +150,13 @@ export default function LoginPage() {
                 </label>
                 <input
                   id="confirmPassword"
+                  name="flippi-confirm"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
                   required
+                  autoComplete="new-password"
                   className="w-full px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink focus:ring-1 focus:ring-hot-pink transition-colors font-body"
                 />
               </div>
@@ -176,9 +179,15 @@ export default function LoginPage() {
                 : mode === 'login'
                   ? 'Sign In'
                   : mode === 'signup'
-                    ? 'Create Account'
+                    ? 'Start Free Trial'
                     : 'Send Reset Link'}
             </button>
+
+            {mode === 'signup' && (
+              <p className="text-flamingo-blush/30 font-body text-xs text-center">
+                30 days free, then $9/month. No credit card required.
+              </p>
+            )}
           </form>
 
           <div className="mt-6 text-center space-y-2">
@@ -188,7 +197,7 @@ export default function LoginPage() {
                   onClick={() => { setMode('signup'); setError(''); setMessage(''); }}
                   className="text-flamingo-blush/70 hover:text-hot-pink text-sm font-body cursor-pointer transition-colors"
                 >
-                  Don&apos;t have an account? Sign up
+                  Don&apos;t have an account? Start free trial
                 </button>
                 <br />
                 <button
@@ -215,5 +224,17 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen jungle-bg flex items-center justify-center">
+        <div className="text-flamingo-blush animate-pulse font-heading text-xl">Loading...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
