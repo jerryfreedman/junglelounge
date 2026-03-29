@@ -17,7 +17,7 @@ export default function LoginPage() {
 
     if (password === '123456') {
       localStorage.setItem('authenticated', 'true');
-      router.push('/dashboard');
+      router.push('/main');
     } else {
       setError('Wrong password. Try again.');
       setIsLoading(false);

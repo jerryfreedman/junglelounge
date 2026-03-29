@@ -17,8 +17,8 @@ const config: Config = {
         'dark-bg': '#0F2410',
       },
       fontFamily: {
-        heading: ['Righteous', 'cursive'],
-        body: ['DM Sans', 'sans-serif'],
+        heading: ['Poppins', 'sans-serif'],
+        body: ['Inter', 'sans-serif'],
       },
     },
   },

@@ -9,7 +9,7 @@ export default function Home() {
   useEffect(() => {
     const auth = localStorage.getItem('authenticated');
     if (auth === 'true') {
-      router.replace('/dashboard');
+      router.replace('/main');
     } else {
       router.replace('/login');
     }
@@ -18,7 +18,7 @@ export default function Home() {
   return (
     <div className="min-h-screen jungle-bg flex items-center justify-center">
       <div className="text-flamingo-blush animate-pulse font-heading text-xl">
-        Loading the jungle...
+        Loading...
       </div>
     </div>
   );
