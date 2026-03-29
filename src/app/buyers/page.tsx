@@ -23,6 +23,8 @@ export default function BuyersPage() {
   const [emailModal, setEmailModal] = useState<{ name: string } | null>(null);
   const [emailType, setEmailType] = useState('Follow-Up');
   const [emailResult, setEmailResult] = useState('');
+  const [emailPlant, setEmailPlant] = useState('');
+  const [emailNote, setEmailNote] = useState('');
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -131,14 +133,14 @@ export default function BuyersPage() {
       const res = await fetch('/api/generate-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerName: emailModal.name, emailType, plantName: '', customNote: '' }),
+        body: JSON.stringify({ customerName: emailModal.name, emailType, plantName: emailPlant, customNote: emailNote }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setEmailResult(data.content || 'Error generating email');
       // Save draft
       const { error: draftErr } = await supabase.from('email_drafts').insert({
-        customer_name: emailModal.name, email_type: emailType, custom_note: '', content: data.content || '',
+        customer_name: emailModal.name, email_type: emailType, custom_note: emailNote, content: data.content || '',
       });
       if (draftErr) console.error('Failed to save email draft:', draftErr.message);
     } catch (err) {
@@ -198,7 +200,7 @@ export default function BuyersPage() {
                           <td className="px-3 py-2.5 text-flamingo-blush/60 font-body">${(buyerShipping[c.name] || 0).toFixed(2)}</td>
                           <td className="px-3 py-2.5 text-flamingo-blush/60 font-body">{c.last_purchase_date}</td>
                           <td className="px-3 py-2.5">
-                            <button onClick={() => { setEmailModal({ name: c.name }); setEmailResult(''); }}
+                            <button onClick={() => { setEmailModal({ name: c.name }); setEmailResult(''); setEmailPlant(''); setEmailNote(''); }}
                               className="text-hot-pink/70 hover:text-hot-pink text-xs font-body cursor-pointer">Email</button>
                           </td>
                         </tr>
@@ -311,7 +313,7 @@ export default function BuyersPage() {
                               }`}>{days}d</span>
                             </td>
                             <td className="px-3 py-2.5">
-                              <button onClick={() => { setEmailModal({ name: c.name }); setEmailResult(''); }}
+                              <button onClick={() => { setEmailModal({ name: c.name }); setEmailResult(''); setEmailPlant(''); setEmailNote(''); }}
                                 className="text-hot-pink/60 hover:text-hot-pink text-xs font-body cursor-pointer">Email</button>
                             </td>
                           </tr>
@@ -334,12 +336,27 @@ export default function BuyersPage() {
                 <button onClick={() => setEmailModal(null)} className="text-flamingo-blush/50 hover:text-white text-xl cursor-pointer">&times;</button>
               </div>
 
-              <div className="mb-4">
+              <div className="mb-3">
                 <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Email Type</label>
                 <select value={emailType} onChange={e => setEmailType(e.target.value)}
                   className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white focus:outline-none focus:border-hot-pink font-body text-sm">
                   {EMAIL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+              </div>
+
+              <div className="mb-3">
+                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Plant Name (optional)</label>
+                <input value={emailPlant} onChange={e => setEmailPlant(e.target.value)}
+                  placeholder="e.g. Monstera Albo"
+                  className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body text-sm" />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm text-flamingo-blush/70 mb-1 font-body">Custom Note (optional)</label>
+                <textarea value={emailNote} onChange={e => setEmailNote(e.target.value)}
+                  placeholder="Any extra context for the email..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body text-sm resize-none" />
               </div>
 
               <button onClick={handleGenerateEmail} disabled={generating}
