@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   business_name text NOT NULL DEFAULT 'My Business',
   business_type text DEFAULT 'reseller',
   platform_name text DEFAULT '',
+  onboarding_complete boolean DEFAULT false,
   email text,
   created_at timestamp with time zone DEFAULT now()
 );

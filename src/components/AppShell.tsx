@@ -8,7 +8,7 @@ import Sidebar from './Sidebar';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, isLoading } = useAuth();
+  const { user, profile, isLoading } = useAuth();
   const router = useRouter();
 
   if (isLoading) {
@@ -23,6 +23,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     router.replace('/login');
+    return null;
+  }
+
+  if (profile && !profile.onboarding_complete) {
+    router.replace('/onboarding');
     return null;
   }
 

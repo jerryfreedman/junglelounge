@@ -3,13 +3,15 @@
 import { useState, useEffect } from 'react';
 import AppShell from '@/components/AppShell';
 import { useAuth } from '@/lib/auth';
-import { updateProfile } from '@/lib/supabase';
+import { updateProfile, supabase, requireUserId } from '@/lib/supabase';
 
 export default function SettingsPage() {
   const { profile, refreshProfile, user } = useAuth();
   const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('reseller');
   const [platformName, setPlatformName] = useState('');
+  const [feePct, setFeePct] = useState('');
+  const [settingsId, setSettingsId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -20,7 +22,34 @@ export default function SettingsPage() {
       setBusinessType(profile.business_type || 'reseller');
       setPlatformName(profile.platform_name || '');
     }
+    loadFee();
   }, [profile]);
+
+  async function loadFee() {
+    try {
+      const uid = await requireUserId();
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('user_id', uid)
+        .limit(1)
+        .single();
+
+      if (error && error.code === 'PGRST116') {
+        const { data: newRow } = await supabase
+          .from('settings')
+          .insert({ palmstreet_fee_pct: 0, user_id: uid })
+          .select()
+          .single();
+        if (newRow) { setSettingsId(newRow.id); setFeePct('0'); }
+      } else if (data) {
+        setSettingsId(data.id);
+        setFeePct(String(data.palmstreet_fee_pct || 0));
+      }
+    } catch {
+      // Not ready yet
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -32,6 +61,12 @@ export default function SettingsPage() {
         business_type: businessType,
         platform_name: platformName,
       });
+
+      // Save fee
+      if (settingsId) {
+        await supabase.from('settings').update({ palmstreet_fee_pct: parseFloat(feePct) || 0 }).eq('id', settingsId);
+      }
+
       await refreshProfile();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -40,6 +75,8 @@ export default function SettingsPage() {
     }
     setSaving(false);
   }
+
+  const feeLabel = platformName ? `${platformName} Fee` : 'Platform Fee';
 
   return (
     <AppShell>
@@ -58,7 +95,7 @@ export default function SettingsPage() {
               type="text"
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
-              placeholder="e.g. Jungle Lounge, RarePlant Co"
+              placeholder="e.g. RarePlant Co, Vintage Finds"
               className="w-full px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body"
             />
           </div>
@@ -94,8 +131,27 @@ export default function SettingsPage() {
               placeholder="e.g. Palmstreet, Whatnot, eBay, Mercari"
               className="w-full px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-hot-pink font-body"
             />
+          </div>
+
+          <div className="pt-4 border-t border-tropical-leaf/10">
+            <label className="block text-sm text-flamingo-blush/80 mb-1.5 font-body">
+              {feeLabel} (%)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={feePct}
+                onChange={(e) => setFeePct(e.target.value)}
+                className="flex-1 px-4 py-3 bg-dark-bg border border-deep-jungle rounded-lg text-white font-body focus:outline-none focus:border-hot-pink"
+                placeholder="e.g. 15"
+              />
+              <span className="text-flamingo-blush/50 text-sm">%</span>
+            </div>
             <p className="text-flamingo-blush/40 text-xs font-body mt-1.5">
-              Used to label your platform fee in the settings gear
+              This is deducted from every sale to calculate your true profit
             </p>
           </div>
 

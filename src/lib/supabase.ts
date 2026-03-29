@@ -26,6 +26,7 @@ export interface Profile {
   business_name: string;
   business_type: string;
   platform_name: string;
+  onboarding_complete: boolean;
   email: string;
   created_at?: string;
 }

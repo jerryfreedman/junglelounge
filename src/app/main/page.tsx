@@ -118,8 +118,9 @@ export default function MainPage() {
   const totalGross = sales.reduce((sum, s) => sum + s.sale_price, 0);
   const totalNet = sales.reduce((sum, s) => sum + s.true_profit, 0);
 
-  const greeting = profile?.business_name
-    ? `Welcome back, ${profile.business_name}`
+  const biz = profile?.business_name;
+  const greeting = biz && biz !== 'My Business'
+    ? `Welcome back, ${biz}`
     : 'Welcome to Flippi';
 
   return (

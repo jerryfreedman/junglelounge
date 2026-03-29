@@ -16,13 +16,17 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [mode, setMode] = useState<Mode>('login');
   const router = useRouter();
-  const { user, isLoading: authLoading, signIn, signUp } = useAuth();
+  const { user, profile, isLoading: authLoading, signIn, signUp } = useAuth();
 
   useEffect(() => {
     if (!authLoading && user) {
-      router.replace('/main');
+      if (profile && !profile.onboarding_complete) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/main');
+      }
     }
-  }, [user, authLoading, router]);
+  }, [user, profile, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

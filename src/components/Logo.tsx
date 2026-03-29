@@ -10,16 +10,14 @@ export default function Logo({ size = 48 }: { size?: number }) {
       className="flex-shrink-0"
     >
       <circle cx="32" cy="32" r="30" fill="#1A3D1F" stroke="#4A8C3F" strokeWidth="1"/>
-      {/* Chart bars — represents data/analytics */}
+      {/* Chart bars */}
       <rect x="14" y="36" width="6" height="16" rx="1" fill="#4A8C3F" opacity="0.7"/>
       <rect x="22" y="28" width="6" height="24" rx="1" fill="#4A8C3F" opacity="0.85"/>
       <rect x="30" y="20" width="6" height="32" rx="1" fill="#F4607A"/>
       <rect x="38" y="30" width="6" height="22" rx="1" fill="#4A8C3F" opacity="0.85"/>
       <rect x="46" y="24" width="6" height="28" rx="1" fill="#4A8C3F" opacity="0.7"/>
-      {/* Upward arrow — represents profit growth */}
+      {/* Upward arrow */}
       <path d="M33 10 L40 18 L36 18 L36 22 L30 22 L30 18 L26 18 Z" fill="#F4607A" opacity="0.9"/>
-      {/* F letter accent */}
-      <text x="32" y="60" textAnchor="middle" fill="#F4849A" fontSize="6" fontFamily="sans-serif" fontWeight="bold" opacity="0.5">F</text>
     </svg>
   );
 }
